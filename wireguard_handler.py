@@ -8,6 +8,7 @@ Classes:
 
 from db import DB_Handler
 from constants import WireguardConstants
+import subprocess, ipaddress
 
 class WireguardConfig:
 	'''
@@ -46,25 +47,18 @@ class WireguardConfig:
 			Failure:
 				False
 
-		'''
-		import subprocess
-		import ipaddress
-		
+		'''		
 		try:
 			# This must be defined outside the dictionary definition since it is used twice and results in a random variable
 			client_private_key = str(subprocess.check_output('wg genkey', shell=True))[2:-3]
 			
 			client_dict = {
-				# 30 seconds between keepalive packets
 				'keepalive_time' : WireguardConstants.keepalive_time,
 				'client_private_key' : client_private_key,
 				'client_public_key' : str(subprocess.check_output('echo {} | wg pubkey'.format(client_private_key), shell=True))[2:-3],
 				'client_preshared_key' : str(subprocess.check_output('wg genpsk', shell=True))[2:-3],
-				# The IPs of the client and server within the VPN
-				#'client_address' : str(ipaddress.ip_address(int(ipaddress.ip_address(self.db.get_largest_ip())) + 1)),
 				'client_address' : str(ipaddress.ip_address(self.db.get_next_ip())),
 				'server_address' : str(ipaddress.ip_address(WireguardConstants.server_vpn_ip)),
-				# The Domain of the server
 				'server_public_domain' : WireguardConstants.server_domain,
 				'server_public_key' : WireguardConstants.server_public_key,
 				'server_port' : WireguardConstants.server_port
@@ -78,25 +72,14 @@ class WireguardConfig:
 			client_config.write(client_config_text)
 			client_config.close()
 
-			# write server config
-			############### Permissions errors? #########################
-			# sudo addgroup wgconfig                                    #
-			# sudo adduser danny wgconfig                               #
-			# sudo usermod -a -G wgconfig danny                         #
-			# sudo chgrp -R wgconfig /etc/wireguard                     #
-			# sudo chmod -R g+rw /etc/wireguard                         #
-			# sudo find /etc/wireguard -type d -exec chmod 2775 {} \;   #
-			# sudo find /etc/wireguard -type f -exec chmod ug+rw {} \;  #
-			#############################################################
+			
 			server_config = open(WireguardConstants.server_config_path, 'a')
 			server_config.write(server_config_text)
 			server_config.close()
 
-			# needs to run as root. regular cronjob? maybe. or use service account that doesn't need password for sudo
-			#subprocess.check_output("sudo wg syncconf " + WireguardConstants.server_interface + " <(wg-quick strip " + WireguardConstants.server_interface + ")", shell=True)
-			# these also need to run as root
-			#subprocess.check_output("sudo wg-quick down " + WireguardConstants.server_interface, shell=True)
-			#subprocess.check_output("sudo wg-quick up " + WireguardConstants.server_interface, shell=True)
+			# Must run as service account with passwordless sudo
+			# See readme.txt for more information
+			subprocess.check_output("sudo bash -c 'wg syncconf " + WireguardConstants.server_interface + " <(wg-quick strip " + WireguardConstants.server_interface + ")'", shell=True)
 
 			return client_dict['client_address']
 		except:

@@ -35,6 +35,7 @@ Flask Routes:
 	/get_config		get_config
 '''
 
+from curses.panel import new_panel
 from flask import Flask, render_template, redirect, request, session, url_for, send_file, Response
 import secrets, requests, random, json
 from constants import WireguardConstants, FlaskConstants, DeviceConstants
@@ -165,6 +166,74 @@ def login():
 			session[FlaskConstants.user_id_session_key] = userid
 			return redirect(url_for('index'))
 	return render_template('login.html')
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+	'''
+	Password reset request page
+
+	Flask Methods: GET, POST
+
+	Parameters:
+		Function:
+			None
+		Session:
+			None
+		GET/Querystring:
+			None
+		POST/Form:
+			username	Users(Email)
+
+	Returns:
+		GET:
+			forgot_password.html template
+		POST:
+			Note that we always return success even if we fail 
+			forgot_password_success.html template
+	'''
+	if request.method == 'POST':
+		username = request.form['username']
+		print(db.forgot_password(username))
+		return render_template('forgot_password_success.html')
+	return render_template('forgot_password.html')
+
+@app.route('/reset_password', methods=['GET', 'POST'])
+def reset_password():
+	'''
+	Password reset page
+
+	Flask Methods: GET, POST
+
+	Parameters:
+		Function:
+			None
+		Session:
+			None
+		GET/Querystring:
+			token			PasswordResets(ResetToken)
+		POST/Form:
+			new_password	Users(Password) [Unhashed]
+
+	Returns:
+		GET:
+			reset_password.html template
+		POST:
+			reset_password_success.html template on success
+			reset_password_fail.html template on failure
+	'''
+	if request.method == 'POST':
+		new_password = request.form['new_password']
+		token = request.form['token']
+		mfa_seed =  db.reset_password(token, new_password)
+		if not mfa_seed:
+			return render_template('reset_password_fail.html')
+		render_dict = {'mfa_seed' : mfa_seed}
+		return render_template('reset_password_success.html', **render_dict)
+	token = request.args.get('token', False)
+	if not token:
+		return '404'
+	render_dict = {'token' : token}
+	return render_template('reset_password.html', **render_dict)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():

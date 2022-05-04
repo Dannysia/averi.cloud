@@ -9,7 +9,7 @@ Classes:
 	DB_Handler
 '''
 
-import mysql.connector, pyotp, hashlib, secrets, ipaddress
+import mysql.connector, pyotp, hashlib, secrets, ipaddress, re
 from constants import DatabaseConstants, WireguardConstants
 
 class User:
@@ -85,7 +85,20 @@ class DB_Handler:
 		add_capability
 		remove_token_config_access
 	'''
-	# Connect to the database
+
+	def hash_password(self, password, salt):
+		'''
+		Hashes password
+
+		Parameters:
+			password			Users(Password) [Unhashed]
+			salt				Users(Salt)
+
+		Returns:
+			hashed_password		hashed version of password
+		'''
+		return hashlib.sha256((password + salt).encode()).hexdigest()
+	
 	def __init__(self):
 		'''
 		Initializes connection to the database
@@ -129,7 +142,7 @@ class DB_Handler:
 								# Parameterized inputs
 								{
 									'email' : email,
-									'hashed_password' : hashlib.sha256((password + salt).encode()).hexdigest(),
+									'hashed_password' : self.hash_password(password, salt),
 									'salt' : salt,
 									'mfa_seed' : mfa_seed,
 									'first_name' : first_name,
@@ -164,7 +177,7 @@ class DB_Handler:
 		password_hash = result[1]
 		salt = result[2]
 		mfa_seed = result[3]
-		if hashlib.sha256((password + salt).encode()).hexdigest() != password_hash:
+		if self.hash_password(password, salt) != password_hash:
 			return -1
 		if pyotp.TOTP(mfa_seed).now() != mfa_token:
 			return -1
@@ -413,5 +426,72 @@ class DB_Handler:
 			self.cursor.execute("DELETE FROM DeviceWireguardConfigs WHERE DeviceID = %(deviceid)s", {'deviceid' : deviceid})
 			self.db.commit()
 			return True
+		except:
+			return False
+
+	def send_email(self, target, content):
+		'''
+		Send an email containing content to target
+
+		Parameters:
+			target		The destination email address
+			content		
+		'''
+		regex = re.compile(r'([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+')
+
+		return False
+
+	def forgot_password(self, email):
+		'''
+		Sends an email and adds a record to the database to reset a user password
+
+		Parameters:
+			email	Users(Email)
+			
+		Returns
+			True on success
+			False on failure
+		'''
+		try:
+			self.cursor.execute("SELECT UserID FROM Users WHERE Email = %(email)s;", {'email' : email})
+			userid = self.cursor.fetchall()[0][0]
+			token = pyotp.random_base32()
+			self.cursor.execute("INSERT INTO PasswordResets (UserID, ResetToken) VALUES (%(userid)s, %(token)s);", {'userid' : userid, 'token' : token})
+			self.db.commit()
+		except:
+			return False
+		try:
+			from email_handler import EmailHandler
+			emailer = EmailHandler()
+			subject = 'AVERI.cloud Password Reset Request'
+			content = 'Reset your password at https://averi.cloud/reset_password?token=' + token
+			emailer.sendMessage(email, subject, content)
+			return True
+		except:
+			return False
+
+	def reset_password(self, token, new_password):
+		'''
+		Resets Users(MFASeed), Users(Password), and Users(Salt)
+
+		Parameters:
+			token			PasswordResets(ResetToken)
+			new_password	Users(Password) [Unhashed]
+			
+		Returns
+			New Users(MFASeed) on success
+			False on failure
+		'''
+		try:
+			self.cursor.execute("SELECT UserID FROM PasswordResets WHERE ResetToken = %(token)s;", {'token' : token})
+			userid = self.cursor.fetchall()[0][0]
+			salt = secrets.token_hex(4)
+			mfa_seed = pyotp.random_base32()
+			hashed_password = self.hash_password(new_password, salt)
+			self.cursor.execute("UPDATE Users SET PasswordHash = %(password)s, Salt = %(salt)s, MFASeed = %(mfaseed)s WHERE UserID = %(userid)s;",
+								{'password' : hashed_password, 'salt' : salt, 'mfaseed' : mfa_seed, 'userid' : userid})
+			self.cursor.execute("DELETE FROM PasswordResets WHERE UserID = %(userid)s;", {'userid' : userid})
+			self.db.commit()
+			return mfa_seed
 		except:
 			return False
