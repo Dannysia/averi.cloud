@@ -1,0 +1,23 @@
+https://certbot.eff.org/instructions?ws=other&os=ubuntufocal
+
+# Install snap
+sudo apt update
+sudo apt install snapd
+
+# Install snap classic
+sudo snap install classic --beta --devmode
+
+# Install dependencies
+sudo snap install core; sudo snap refresh core
+
+# Install certbot
+sudo snap install --classic certbot
+
+# Make certbot parth of path
+sudo ln -s /snap/bin/certbot /usr/bin/certbot
+
+# Generate the certs
+sudo certbot certonly --standalone
+
+# Run this when needed
+sudo certbot renew
