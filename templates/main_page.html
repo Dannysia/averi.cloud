@@ -1,0 +1,24 @@
+<a href=/logout>logout?</a><br><br>
+Logged in as {{first_name}} {{last_name}} ({{email}})<br>
+<a href=/new_device>Add a new device?</a><br><br><br>
+<b><u>Your Devices</u></b><br>
+{% for device in devices: %}
+<u>{{device.name}} ({{device.network_address}})</u><br>
+{% for function in device.functions: %}
+{% if function.method == 'GET': %}
+<a href="/execute?uri={{function.uri}}&deviceid={{device.id}}&method={{function.method}}">{{function.name}}</a>
+{% elif function.method == 'STRM': %}
+<a href="/execute?uri={{function.uri}}&deviceid={{device.id}}&method={{function.method}}">{{function.name}}</a>
+{% elif function.method == 'POST': %}
+<form method="post" action=/execute>
+    <input type=hidden name=uri value={{function.uri}}>
+    <input type=hidden name=deviceid value={{device.id}}>
+    <input type=hidden name=method value={{function.method}}>
+    <input type=submit value="{{function.name}}">
+</form>
+{% else: %}
+error displaying function {{function.name}}
+{% endif %}
+{% endfor %}
+<br><br>
+{% endfor %}
